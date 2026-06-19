@@ -1,8 +1,8 @@
 # pi-claude-min
 
-Clean-room minimal Claude Code style coding agent built on the Pi framework.
+pi-claude-min is a lightweight, Claude Code style coding agent built on the Pi framework. It provides a small but practical agent loop for reading projects, editing files, running shell commands, saving sessions, and exposing the same core agent through a CLI, HTTP API, SSE event stream, and TypeScript SDK.
 
-This project intentionally does not reuse code from the archived source snapshot in the parent repository. It uses the public Pi packages as the agent substrate:
+The project uses public Pi packages as its agent substrate:
 
 - `@earendil-works/pi-ai` for model/provider access.
 - `@earendil-works/pi-agent-core` for the agent loop, tool calling, streaming, and tool execution.
