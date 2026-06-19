@@ -1,0 +1,35 @@
+{
+  "name": "pi-claude-min",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Clean-room minimal Claude Code style coding agent built on the Pi agent framework.",
+  "bin": {
+    "pi-claude-min": "dist/main.js",
+    "pi-claude-min-server": "dist/server.js"
+  },
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "scripts": {
+    "dev": "tsx src/main.ts",
+    "dev:server": "tsx src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/main.js",
+    "start:server": "node dist/server.js",
+    "test": "npm run build && node scripts/smoke.mjs && node scripts/api-smoke.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@earendil-works/pi-agent-core": "latest",
+    "@earendil-works/pi-ai": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.29",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
