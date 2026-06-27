@@ -39,6 +39,7 @@ Interactive commands:
   /memory                  List long-term memories
   /remember <name>: <text> Save a long-term memory
   /forget <id-or-name>     Delete a long-term memory
+  /agents                  List subagent tasks
   /session                 Show session details
   /tools                   Show available tools
   /clear                   Clear in-memory conversation context
@@ -175,6 +176,7 @@ function printInteractiveHelp(): void {
   /memory    List long-term memories
   /remember  Save memory: /remember name: text
   /forget    Delete memory: /forget id-or-name
+  /agents    List subagent tasks
   /session   Show session details
   /tools     Show available tools
   /clear     Clear conversation context
@@ -230,6 +232,16 @@ async function runInteractive(cli: CliOptions, initialMessages?: unknown[]): Pro
         process.stdout.write("No long-term memories saved.\n");
       } else {
         process.stdout.write(records.map(record => `${record.id} [${record.type}] ${record.name} — ${record.description}`).join("\n") + "\n");
+      }
+      rl.prompt();
+      continue;
+    }
+    if (prompt === "/agents") {
+      const agents = runner.agents();
+      if (agents.length === 0) {
+        process.stdout.write("No subagent tasks yet.\n");
+      } else {
+        process.stdout.write(agents.map(agent => `${agent.id} [${agent.status}] ${agent.subagentType}: ${agent.description}`).join("\n") + "\n");
       }
       rl.prompt();
       continue;

@@ -62,12 +62,17 @@ try {
   assert.equal(created.response.status, 201);
   assert.equal(typeof created.json.id, "string");
   assert.equal(created.json.cwd, cwd);
-  assert.deepEqual(created.json.tools, ["read_file", "write_file", "edit_file", "bash", "grep", "list_files"]);
+  assert.deepEqual(created.json.tools, ["read_file", "write_file", "edit_file", "bash", "grep", "list_files", "agent", "send_message"]);
+  assert.equal(created.json.agents, 0);
 
   const sessionId = created.json.id;
   const fetched = await request("GET", `/api/sessions/${sessionId}`);
   assert.equal(fetched.response.status, 200);
   assert.equal(fetched.json.id, sessionId);
+
+  const agents = await request("GET", `/api/sessions/${sessionId}/agents`);
+  assert.equal(agents.response.status, 200);
+  assert.deepEqual(agents.json.agents, []);
 
   const remembered = await request("POST", `/api/sessions/${sessionId}/memory/remember`, {
     name: "API Preference",

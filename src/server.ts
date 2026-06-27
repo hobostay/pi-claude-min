@@ -101,6 +101,7 @@ function sessionResponse(apiSession: ApiSession): Record<string, unknown> {
   return {
     ...apiSession.runner.info(),
     busy: apiSession.busy,
+    agents: apiSession.runner.agents().length,
     eventCount: apiSession.events.length,
   };
 }
@@ -232,6 +233,36 @@ async function handleMemory(id: string, req: http.IncomingMessage, res: http.Ser
   return methodNotAllowed(res);
 }
 
+async function handleAgents(
+  id: string,
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  agentId?: string,
+  action?: string,
+): Promise<void> {
+  const apiSession = sessions.get(id);
+  if (!apiSession) return notFound(res);
+
+  if (!agentId && req.method === "GET") {
+    return json(res, 200, { agents: apiSession.runner.agents() });
+  }
+
+  if (agentId && action === "messages" && req.method === "POST") {
+    const body = await readJson(req);
+    const message = stringField(body, "message");
+    if (!message) return json(res, 400, { error: "message_required" });
+    const waitForResponse = body.waitForResponse === true || body.wait_for_response === true;
+    const task = await apiSession.runner.sendAgentMessage({
+      to: agentId,
+      message,
+      waitForResponse,
+    });
+    return json(res, 202, { task });
+  }
+
+  return methodNotAllowed(res);
+}
+
 function handleEvents(id: string, req: http.IncomingMessage, res: http.ServerResponse): void {
   if (req.method !== "GET") return methodNotAllowed(res);
   const apiSession = sessions.get(id);
@@ -279,10 +310,15 @@ async function route(req: http.IncomingMessage, res: http.ServerResponse): Promi
     if (action === "events") return handleEvents(id, req, res);
     if (action === "clear") return handleClear(id, req, res);
     if (action === "memory") return handleMemory(id, req, res);
+    if (action === "agents") return handleAgents(id, req, res);
   }
 
   if (parts.length === 5 && parts[0] === "api" && parts[1] === "sessions" && parts[3] === "memory") {
     return handleMemory(parts[2]!, req, res, parts[4]);
+  }
+
+  if (parts.length === 6 && parts[0] === "api" && parts[1] === "sessions" && parts[3] === "agents") {
+    return handleAgents(parts[2]!, req, res, parts[4], parts[5]);
   }
 
   return notFound(res);

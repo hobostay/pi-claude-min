@@ -1,10 +1,13 @@
 import { Agent, type AgentMessage } from "@earendil-works/pi-agent-core";
 import { getModels, getProviders, type KnownProvider } from "@earendil-works/pi-ai";
+import { AgentManager } from "./agents/AgentManager.js";
 import { recallMemories } from "./memory/MemoryRecall.js";
 import { PromptBuilder } from "./prompt/PromptBuilder.js";
 import { SYSTEM_PROMPT } from "./systemPrompt.js";
 import { approveToolCall } from "./permissions.js";
 import { createCodingTools } from "./tools.js";
+import { createSessionStore } from "./session.js";
+import type { AgentDefinition, AgentTask, AgentTaskEvent, SendAgentMessageInput } from "./agents/types.js";
 import type { CliOptions } from "./types.js";
 import type { SessionStore } from "./session.js";
 
@@ -60,6 +63,8 @@ export type CodingAgentSession = {
   clear(): Promise<void>;
   describe(): string;
   info(): CodingAgentSessionInfo;
+  agents(): AgentTask[];
+  sendAgentMessage(input: SendAgentMessageInput): Promise<AgentTask>;
   onEvent?(listener: (event: AgentEvent) => void | Promise<void>): () => void;
   runWorkflow?(goal: string): Promise<unknown>;
 };
@@ -80,6 +85,7 @@ export type CodingAgentSessionInfo = {
   model: string;
   tools: string[];
   messages: number;
+  agents: number;
 };
 
 export async function createCodingAgentSession(options: {
@@ -87,17 +93,74 @@ export async function createCodingAgentSession(options: {
   session: SessionStore;
   initialMessages?: unknown[];
   echo?: boolean;
+  systemPrompt?: string;
+  enableSubagents?: boolean;
   onEvent?: (event: AgentEvent) => void | Promise<void>;
 }): Promise<CodingAgentSession> {
   const model = resolveModel(options.cli.provider, options.cli.model);
+  const shouldEcho = options.echo ?? true;
+  const eventListeners = new Set<(event: AgentEvent) => void | Promise<void>>();
+  let activeTurn: { output: string; events: AgentEvent[] } | undefined;
+
+  const publishEvent = async (typed: AgentEvent, publishOptions: { trackTurn?: boolean } = {}) => {
+    const trackTurn = publishOptions.trackTurn ?? true;
+    if (trackTurn) {
+      activeTurn?.events.push(typed);
+    }
+    if (trackTurn && activeTurn && typed.type === "message_update" && typed.assistantMessageEvent?.type === "text_delta") {
+      activeTurn.output += typed.assistantMessageEvent.delta ?? "";
+    }
+    await options.session.append({
+      type: "event",
+      at: new Date().toISOString(),
+      event: typed,
+    });
+    await options.onEvent?.(typed);
+    for (const listener of eventListeners) {
+      await listener(typed);
+    }
+  };
+
+  const agentManager = options.enableSubagents === false
+    ? undefined
+    : new AgentManager({
+        onEvent: event => publishEvent(event as AgentTaskEvent & AgentEvent),
+        createRunner: async (task: AgentTask, definition: AgentDefinition) => {
+          const session = await createSessionStore(`${options.session.id}.${task.id}`);
+          const systemPrompt = [
+            SYSTEM_PROMPT,
+            "",
+            "Subagent role:",
+            definition.systemPrompt,
+            "",
+            `This subagent task id is ${task.id}. Report results to the parent agent; do not talk directly to the human user.`,
+          ].join("\n");
+          return createCodingAgentSession({
+            cli: options.cli,
+            session,
+            echo: false,
+            systemPrompt,
+            enableSubagents: false,
+            onEvent: async event => {
+              await publishEvent({
+                ...event,
+                agentId: task.id,
+                subagentType: definition.type,
+              }, { trackTurn: false });
+            },
+          });
+        },
+      });
+
   const tools = createCodingTools({
     cwd: options.cli.cwd,
     maxReadBytes: options.cli.maxReadBytes,
+    agentManager,
   });
 
   const agent = new Agent({
     initialState: {
-      systemPrompt: SYSTEM_PROMPT,
+      systemPrompt: options.systemPrompt ?? SYSTEM_PROMPT,
       model,
       tools,
       messages: (options.initialMessages ?? []) as AgentMessage[],
@@ -126,25 +189,9 @@ export async function createCodingAgentSession(options: {
     createdAt: new Date().toISOString(),
   });
 
-  const shouldEcho = options.echo ?? true;
-  const eventListeners = new Set<(event: AgentEvent) => void | Promise<void>>();
-  let activeTurn: { output: string; events: AgentEvent[] } | undefined;
-
   agent.subscribe(async event => {
     const typed = event as AgentEvent;
-    activeTurn?.events.push(typed);
-    if (activeTurn && typed.type === "message_update" && typed.assistantMessageEvent?.type === "text_delta") {
-      activeTurn.output += typed.assistantMessageEvent.delta ?? "";
-    }
-    await options.session.append({
-      type: "event",
-      at: new Date().toISOString(),
-      event: typed,
-    });
-    await options.onEvent?.(typed);
-    for (const listener of eventListeners) {
-      await listener(typed);
-    }
+    await publishEvent(typed);
 
     if (!shouldEcho) {
       return;
@@ -178,6 +225,7 @@ export async function createCodingAgentSession(options: {
     model: options.cli.model,
     tools: tools.map(tool => tool.name),
     messages: agent.state.messages.length,
+    agents: agentManager?.list().length ?? 0,
   });
 
   return {
@@ -239,7 +287,17 @@ export async function createCodingAgentSession(options: {
         `model: ${sessionInfo.provider}/${sessionInfo.model}`,
         `tools: ${sessionInfo.tools.join(", ")}`,
         `messages: ${sessionInfo.messages}`,
+        `agents: ${sessionInfo.agents}`,
       ].join("\n");
+    },
+    agents() {
+      return agentManager?.list() ?? [];
+    },
+    async sendAgentMessage(input) {
+      if (!agentManager) {
+        throw new Error("Subagents are disabled for this session.");
+      }
+      return agentManager.sendMessage(input);
     },
     onEvent(listener) {
       eventListeners.add(listener);

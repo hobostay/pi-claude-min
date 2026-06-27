@@ -74,7 +74,14 @@ const fakeRunner = {
       model: "claude-sonnet-4-20250514",
       tools: ["read_file", "bash"],
       messages: this.promptCount,
+      agents: 0,
     };
+  },
+  agents() {
+    return [];
+  },
+  async sendAgentMessage() {
+    throw new Error("No fake subagents");
   },
   onEvent(listener) {
     listeners.add(listener);

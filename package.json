@@ -17,7 +17,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/main.js",
     "start:server": "node dist/server.js",
-    "test": "npm run build && node scripts/smoke.mjs && node scripts/framework-smoke.mjs && node scripts/api-smoke.mjs",
+    "test": "npm run build && node scripts/smoke.mjs && node scripts/framework-smoke.mjs && node scripts/multi-agent-smoke.mjs && node scripts/api-smoke.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

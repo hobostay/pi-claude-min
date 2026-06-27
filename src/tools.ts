@@ -3,6 +3,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { Type, type Static, type TSchema } from "@earendil-works/pi-ai";
 import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
+import { createAgentTools } from "./agents/createAgentTools.js";
 import { displayPath, resolveInsideCwd } from "./pathSafety.js";
 import type { ToolEnvironment } from "./types.js";
 
@@ -213,5 +214,6 @@ export function createCodingTools(env: ToolEnvironment): AgentTool[] {
         return runCommand(command, env.cwd, 30_000, signal ?? new AbortController().signal);
       },
     }),
+    ...createAgentTools(env.agentManager),
   ];
 }

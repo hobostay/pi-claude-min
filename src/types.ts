@@ -1,6 +1,8 @@
 export type PermissionMode = "ask" | "auto" | "bypass";
 export type ExecutionMode = "single" | "workflow";
 
+import type { AgentManager } from "./agents/AgentManager.js";
+
 export type CliOptions = {
   cwd: string;
   provider: string;
@@ -17,6 +19,7 @@ export type CliOptions = {
 export type ToolEnvironment = {
   cwd: string;
   maxReadBytes: number;
+  agentManager?: AgentManager;
 };
 
 export type SessionRecord =

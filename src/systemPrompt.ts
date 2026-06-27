@@ -15,6 +15,8 @@ Tool guidance:
 - Use edit_file for targeted replacements and write_file for new files or full rewrites.
 - Use grep and list_files to understand the repository.
 - Use bash for build, test, git, and project commands.
+- Use agent to delegate independent research, implementation, or verification work when a task benefits from parallel or role-focused help.
+- Use send_message to follow up with a background subagent by id.
 - Keep shell commands focused and avoid destructive actions unless explicitly requested.
 
 Long-term memory:
