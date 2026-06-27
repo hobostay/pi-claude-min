@@ -4,11 +4,13 @@ import path from "node:path";
 import { URL } from "node:url";
 import { createCodingAgentSession, type AgentEvent, type CodingAgentSession } from "./agent.js";
 import { createSessionStore, loadLatestSnapshot, sessionExists } from "./session.js";
-import type { CliOptions, PermissionMode } from "./types.js";
+import type { CliOptions, ExecutionMode, PermissionMode } from "./types.js";
+import { WorkflowEngine } from "./workflow/WorkflowEngine.js";
+import type { WorkflowEvent } from "./workflow/types.js";
 
 type ApiSession = {
   runner: CodingAgentSession;
-  events: Array<{ id: number; at: string; event: AgentEvent | ApiEvent }>;
+  events: Array<{ id: number; at: string; event: AgentEvent | ApiEvent | WorkflowEvent }>;
   clients: Set<http.ServerResponse>;
   busy: boolean;
 };
@@ -71,7 +73,15 @@ function permissionModeField(body: Record<string, unknown>): PermissionMode {
   throw new Error("permissionMode must be ask, auto, or bypass");
 }
 
-function emit(apiSession: ApiSession, event: AgentEvent | ApiEvent): void {
+function executionModeField(body: Record<string, unknown>): ExecutionMode {
+  const value = stringField(body, "workflowMode") ?? stringField(body, "mode") ?? "single";
+  if (value === "single" || value === "workflow") {
+    return value;
+  }
+  throw new Error("workflowMode must be single or workflow");
+}
+
+function emit(apiSession: ApiSession, event: AgentEvent | ApiEvent | WorkflowEvent): void {
   const record = {
     id: apiSession.events.length + 1,
     at: new Date().toISOString(),
@@ -103,6 +113,7 @@ function buildCliOptions(body: Record<string, unknown>): CliOptions {
     session: stringField(body, "sessionId"),
     resume: stringField(body, "resume"),
     permissionMode: permissionModeField(body),
+    workflowMode: executionModeField(body),
     maxReadBytes: numberField(body, "maxReadBytes") ?? 200_000,
   };
 }
@@ -162,8 +173,11 @@ async function handlePostMessage(id: string, req: http.IncomingMessage, res: htt
   emit(apiSession, { type: "run_started", prompt });
   json(res, 202, { accepted: true, sessionId: id });
 
-  void apiSession.runner
-    .prompt(prompt)
+  const promise = executionModeField(body) === "workflow"
+    ? new WorkflowEngine(apiSession.runner, { onEvent: event => emit(apiSession, event) }).run(prompt)
+    : apiSession.runner.prompt(prompt);
+
+  void promise
     .then(() => emit(apiSession, { type: "run_finished" }))
     .catch(error => emit(apiSession, { type: "run_error", message: error instanceof Error ? error.message : String(error) }))
     .finally(() => {

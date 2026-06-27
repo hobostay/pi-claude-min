@@ -4,7 +4,8 @@ import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { createCodingAgentSession } from "./agent.js";
 import { createSessionStore, getSessionPath, loadLatestSnapshot, sessionExists } from "./session.js";
-import type { CliOptions, PermissionMode } from "./types.js";
+import type { CliOptions, ExecutionMode, PermissionMode } from "./types.js";
+import { WorkflowEngine } from "./workflow/WorkflowEngine.js";
 
 function printHelp(): void {
   process.stdout.write(`pi-claude-min
@@ -21,6 +22,7 @@ Options:
   --cwd <path>             Working directory (default: current directory)
   --print                  Print-mode output without extra interactive chrome
   --json                   Emit JSONL event stream
+  --workflow               Run the task through inspect/plan/execute/verify/summarize workflow
   --session <id>           Use a specific session id
   --resume <id>            Continue writing to an existing session file
   --yes                    Auto-approve sensitive tools for this run
@@ -32,6 +34,7 @@ Options:
 Interactive commands:
   /help                    Show interactive commands
   /model                   Show active provider/model
+  /workflow                Toggle workflow mode
   /session                 Show session details
   /tools                   Show available tools
   /clear                   Clear in-memory conversation context
@@ -60,6 +63,7 @@ function parseArgs(argv: string[]): { cli: CliOptions; prompt: string } {
   let session: string | undefined;
   let resume: string | undefined;
   let permissionMode: PermissionMode = "ask";
+  let workflowMode: ExecutionMode = "single";
   let maxReadBytes = 200_000;
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -110,6 +114,10 @@ function parseArgs(argv: string[]): { cli: CliOptions; prompt: string } {
       print = true;
       continue;
     }
+    if (arg === "--workflow") {
+      workflowMode = "workflow";
+      continue;
+    }
     if (arg === "--yes") {
       permissionMode = "auto";
       continue;
@@ -131,6 +139,7 @@ function parseArgs(argv: string[]): { cli: CliOptions; prompt: string } {
       resume,
       session,
       permissionMode,
+      workflowMode,
       maxReadBytes,
     },
     prompt: rest.join(" ").trim(),
@@ -158,6 +167,7 @@ function printInteractiveHelp(): void {
   process.stdout.write(`Commands:
   /help      Show this help
   /model     Show active provider/model
+  /workflow  Toggle workflow mode
   /session   Show session details
   /tools     Show available tools
   /clear     Clear conversation context
@@ -168,6 +178,7 @@ function printInteractiveHelp(): void {
 async function runInteractive(cli: CliOptions, initialMessages?: unknown[]): Promise<void> {
   const session = await createSessionStore(cli.resume ?? cli.session);
   const runner = await createCodingAgentSession({ cli, session, initialMessages });
+  let workflowMode = cli.workflowMode;
   const rl = readline.createInterface({ input, output, prompt: "> " });
 
   process.stdout.write("pi-claude-min interactive mode. Type /help for commands.\n");
@@ -194,6 +205,12 @@ async function runInteractive(cli: CliOptions, initialMessages?: unknown[]): Pro
       rl.prompt();
       continue;
     }
+    if (prompt === "/workflow") {
+      workflowMode = workflowMode === "workflow" ? "single" : "workflow";
+      process.stdout.write(`workflow mode: ${workflowMode}\n`);
+      rl.prompt();
+      continue;
+    }
     if (prompt === "/session" || prompt === "/tools") {
       process.stdout.write(`${runner.describe()}\n`);
       rl.prompt();
@@ -211,7 +228,18 @@ async function runInteractive(cli: CliOptions, initialMessages?: unknown[]): Pro
       continue;
     }
 
-    await runner.prompt(prompt);
+    if (workflowMode === "workflow") {
+      const engine = new WorkflowEngine(runner, {
+        onEvent(event) {
+          if (event.type === "workflow_task_started") {
+            process.stderr.write(`\n[workflow:${event.task.kind}] ${event.task.title}\n`);
+          }
+        },
+      });
+      await engine.run(prompt);
+    } else {
+      await runner.prompt(prompt);
+    }
     rl.prompt();
   }
 
@@ -240,7 +268,18 @@ async function main(): Promise<void> {
 
   const session = await createSessionStore(cli.resume ?? cli.session);
   const runner = await createCodingAgentSession({ cli, session, initialMessages });
-  await runner.prompt(prompt);
+  if (cli.workflowMode === "workflow") {
+    const engine = new WorkflowEngine(runner, {
+      onEvent(event) {
+        if (event.type === "workflow_task_started") {
+          process.stderr.write(`\n[workflow:${event.task.kind}] ${event.task.title}\n`);
+        }
+      },
+    });
+    await engine.run(prompt);
+  } else {
+    await runner.prompt(prompt);
+  }
 }
 
 main().catch(error => {

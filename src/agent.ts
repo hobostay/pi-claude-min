@@ -54,10 +54,17 @@ export async function runAgentPrompt(options: {
 
 export type CodingAgentSession = {
   id: string;
-  prompt(prompt: string): Promise<void>;
+  prompt(prompt: string): Promise<CodingAgentTurnResult>;
   clear(): Promise<void>;
   describe(): string;
   info(): CodingAgentSessionInfo;
+  onEvent?(listener: (event: AgentEvent) => void | Promise<void>): () => void;
+  runWorkflow?(goal: string): Promise<unknown>;
+};
+
+export type CodingAgentTurnResult = {
+  output: string;
+  events: AgentEvent[];
 };
 
 export type CodingAgentSessionInfo = {
@@ -114,15 +121,24 @@ export async function createCodingAgentSession(options: {
   });
 
   const shouldEcho = options.echo ?? true;
+  const eventListeners = new Set<(event: AgentEvent) => void | Promise<void>>();
+  let activeTurn: { output: string; events: AgentEvent[] } | undefined;
 
   agent.subscribe(async event => {
     const typed = event as AgentEvent;
+    activeTurn?.events.push(typed);
+    if (activeTurn && typed.type === "message_update" && typed.assistantMessageEvent?.type === "text_delta") {
+      activeTurn.output += typed.assistantMessageEvent.delta ?? "";
+    }
     await options.session.append({
       type: "event",
       at: new Date().toISOString(),
       event: typed,
     });
     await options.onEvent?.(typed);
+    for (const listener of eventListeners) {
+      await listener(typed);
+    }
 
     if (!shouldEcho) {
       return;
@@ -161,24 +177,30 @@ export async function createCodingAgentSession(options: {
   return {
     id: options.session.id,
     async prompt(prompt: string) {
+      activeTurn = { output: "", events: [] };
+      const turn = activeTurn;
       await options.session.append({
         type: "user",
         at: new Date().toISOString(),
         content: prompt,
       });
 
-      await agent.prompt(prompt);
-
-      await options.session.append({
-        type: "snapshot",
-        at: new Date().toISOString(),
-        messages: agent.state.messages,
-      });
-
-      if (shouldEcho && !options.cli.json) {
-        process.stdout.write("\n");
-        process.stderr.write(`session: ${options.session.id}\n`);
+      try {
+        await agent.prompt(prompt);
+      } finally {
+        activeTurn = undefined;
+        if (shouldEcho && !options.cli.json) {
+          process.stdout.write("\n");
+          process.stderr.write(`session: ${options.session.id}\n`);
+        }
+        await options.session.append({
+          type: "snapshot",
+          at: new Date().toISOString(),
+          messages: agent.state.messages,
+        });
       }
+
+      return turn;
     },
     async clear() {
       agent.state.messages = [];
@@ -197,6 +219,12 @@ export async function createCodingAgentSession(options: {
         `tools: ${sessionInfo.tools.join(", ")}`,
         `messages: ${sessionInfo.messages}`,
       ].join("\n");
+    },
+    onEvent(listener) {
+      eventListeners.add(listener);
+      return () => {
+        eventListeners.delete(listener);
+      };
     },
     info,
   };

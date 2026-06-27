@@ -19,6 +19,7 @@ npm run build
 ```bash
 npm run dev -- "summarize this repository"
 npm run dev -- --yes "run tests and fix the first failure"
+npm run dev -- --workflow --yes "implement the requested feature and verify it"
 npm run dev -- --provider openai --model gpt-4o-mini "inspect package.json"
 npm run dev
 npm run dev:server
@@ -32,6 +33,8 @@ model: claude-sonnet-4-20250514
 ```
 
 Override with `--provider`, `--model`, `PI_PROVIDER`, or `PI_MODEL`.
+
+Use `--workflow` for multi-step task execution. Workflow mode runs the request through inspect, plan, execute, verify, and summarize phases using the framework modules described below.
 
 ## Tools
 
@@ -64,10 +67,35 @@ When started without a prompt in a TTY, the agent opens a tiny REPL:
 
 - `/help`: show commands.
 - `/model`: show active model.
+- `/workflow`: toggle workflow mode.
 - `/session`: show session details.
 - `/tools`: show enabled tools.
 - `/clear`: clear conversation context.
 - `/exit`: quit.
+
+## Workflow Engine
+
+pi-claude-min includes a small framework layer above the raw Pi agent loop:
+
+- `PromptBuilder`: assembles large step prompts from the user goal, repository context, available tools, completed workflow history, and a response contract.
+- `OutputParser`: extracts JSON plans, Markdown task lists, diff/patch fences, final answer tags, and parser errors from model output.
+- `TaskScheduler`: owns task state, dependencies, attempts, dynamic task insertion, and status accounting.
+- `AgentStepExecutor`: runs one scheduled task through the agent, collects streaming events, aggregates text output, and parses the result.
+- `WorkflowEngine`: coordinates inspect, plan, execute, verify, and summarize phases. If the plan step returns machine-readable plan items, it inserts them before verification.
+
+CLI workflow mode:
+
+```bash
+npm run dev -- --workflow --yes "add a small feature and verify it"
+```
+
+HTTP workflow mode:
+
+```bash
+curl -s http://127.0.0.1:8787/api/sessions/<id>/messages \
+  -H 'content-type: application/json' \
+  -d '{"prompt":"add a small feature and verify it","workflowMode":"workflow"}'
+```
 
 ## HTTP API
 
@@ -131,6 +159,7 @@ const runner = await createCodingAgentSession({
     print: true,
     json: false,
     permissionMode: "auto",
+    workflowMode: "single",
     maxReadBytes: 200_000,
   },
   onEvent(event) {
@@ -139,6 +168,21 @@ const runner = await createCodingAgentSession({
 });
 
 await runner.prompt("inspect the project");
+```
+
+Run a full workflow from TypeScript:
+
+```ts
+import { WorkflowEngine } from "pi-claude-min";
+
+const engine = new WorkflowEngine(runner, {
+  onEvent(event) {
+    console.log(event.type);
+  },
+});
+
+const result = await engine.run("implement a small feature and verify it");
+console.log(result.status);
 ```
 
 ## Current Scope
@@ -154,10 +198,15 @@ Implemented:
 - JSONL session logging with resumable snapshots.
 - Local HTTP API with SSE event streaming.
 - TypeScript exports for embedding the agent directly.
+- Task scheduling with dependency-aware workflow tasks.
+- Prompt builder for large structured step prompts.
+- Output parser for plans, patches, final answers, and parser errors.
+- Workflow engine for inspect/plan/execute/verify/summarize runs.
+- Step executor that collects streaming events and parsed results.
 
 Next useful milestones:
 
-- Add `/compact`, `/cost`, `/model`, and `/help` slash commands.
+- Add `/compact` and `/cost` slash commands.
 - Add patch-style edits and diff previews.
 - Add MCP tool loading.
 - Add sub-agent task tool.

@@ -1,4 +1,5 @@
 export type PermissionMode = "ask" | "auto" | "bypass";
+export type ExecutionMode = "single" | "workflow";
 
 export type CliOptions = {
   cwd: string;
@@ -9,6 +10,7 @@ export type CliOptions = {
   resume?: string;
   session?: string;
   permissionMode: PermissionMode;
+  workflowMode: ExecutionMode;
   maxReadBytes: number;
 };
 
