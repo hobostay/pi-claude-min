@@ -69,6 +69,18 @@ try {
   assert.equal(fetched.response.status, 200);
   assert.equal(fetched.json.id, sessionId);
 
+  const remembered = await request("POST", `/api/sessions/${sessionId}/memory/remember`, {
+    name: "API Preference",
+    type: "feedback",
+    content: "API users prefer SSE events for long-running work.",
+  });
+  assert.equal(remembered.response.status, 201);
+  assert.equal(remembered.json.memory.id, "api-preference");
+
+  const memories = await request("GET", `/api/sessions/${sessionId}/memory`);
+  assert.equal(memories.response.status, 200);
+  assert.equal(memories.json.memories.length, 1);
+
   const eventsResponse = await fetch(`http://127.0.0.1:${port}/api/sessions/${sessionId}/events`);
   assert.equal(eventsResponse.status, 200);
   const reader = eventsResponse.body.getReader();
@@ -79,6 +91,12 @@ try {
   const cleared = await request("POST", `/api/sessions/${sessionId}/clear`, {});
   assert.equal(cleared.response.status, 200);
   assert.equal(cleared.json.messages, 0);
+
+  const forgotten = await request("POST", `/api/sessions/${sessionId}/memory/forget`, {
+    id: "api-preference",
+  });
+  assert.equal(forgotten.response.status, 200);
+  assert.equal(forgotten.json.deleted, true);
 
   console.log("api smoke ok");
 } finally {

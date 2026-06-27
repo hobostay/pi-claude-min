@@ -3,6 +3,7 @@ import path from "node:path";
 import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { createCodingAgentSession } from "./agent.js";
+import { MemoryStore } from "./memory/MemoryStore.js";
 import { createSessionStore, getSessionPath, loadLatestSnapshot, sessionExists } from "./session.js";
 import type { CliOptions, ExecutionMode, PermissionMode } from "./types.js";
 import { WorkflowEngine } from "./workflow/WorkflowEngine.js";
@@ -35,6 +36,9 @@ Interactive commands:
   /help                    Show interactive commands
   /model                   Show active provider/model
   /workflow                Toggle workflow mode
+  /memory                  List long-term memories
+  /remember <name>: <text> Save a long-term memory
+  /forget <id-or-name>     Delete a long-term memory
   /session                 Show session details
   /tools                   Show available tools
   /clear                   Clear in-memory conversation context
@@ -168,6 +172,9 @@ function printInteractiveHelp(): void {
   /help      Show this help
   /model     Show active provider/model
   /workflow  Toggle workflow mode
+  /memory    List long-term memories
+  /remember  Save memory: /remember name: text
+  /forget    Delete memory: /forget id-or-name
   /session   Show session details
   /tools     Show available tools
   /clear     Clear conversation context
@@ -178,6 +185,7 @@ function printInteractiveHelp(): void {
 async function runInteractive(cli: CliOptions, initialMessages?: unknown[]): Promise<void> {
   const session = await createSessionStore(cli.resume ?? cli.session);
   const runner = await createCodingAgentSession({ cli, session, initialMessages });
+  const memory = new MemoryStore(cli.cwd);
   let workflowMode = cli.workflowMode;
   const rl = readline.createInterface({ input, output, prompt: "> " });
 
@@ -213,6 +221,44 @@ async function runInteractive(cli: CliOptions, initialMessages?: unknown[]): Pro
     }
     if (prompt === "/session" || prompt === "/tools") {
       process.stdout.write(`${runner.describe()}\n`);
+      rl.prompt();
+      continue;
+    }
+    if (prompt === "/memory") {
+      const records = await memory.list();
+      if (records.length === 0) {
+        process.stdout.write("No long-term memories saved.\n");
+      } else {
+        process.stdout.write(records.map(record => `${record.id} [${record.type}] ${record.name} — ${record.description}`).join("\n") + "\n");
+      }
+      rl.prompt();
+      continue;
+    }
+    if (prompt.startsWith("/remember ")) {
+      const input = prompt.slice("/remember ".length).trim();
+      const [namePart, ...contentParts] = input.split(":");
+      const content = contentParts.join(":").trim();
+      if (!namePart?.trim() || !content) {
+        process.stdout.write("Usage: /remember name: memory text\n");
+      } else {
+        const saved = await memory.save({
+          name: namePart.trim(),
+          description: content.slice(0, 140),
+          type: "project",
+          content,
+        });
+        process.stdout.write(`saved memory: ${saved.id}\n`);
+      }
+      rl.prompt();
+      continue;
+    }
+    if (prompt.startsWith("/forget ")) {
+      const target = prompt.slice("/forget ".length).trim();
+      if (!target) {
+        process.stdout.write("Usage: /forget id-or-name\n");
+      } else {
+        process.stdout.write((await memory.forget(target)) ? "memory deleted\n" : "memory not found\n");
+      }
       rl.prompt();
       continue;
     }

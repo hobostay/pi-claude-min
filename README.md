@@ -61,6 +61,30 @@ Set `PI_CLAUDE_MIN_HOME` to choose a different state directory. Use `--session <
 
 `--resume` restores the latest saved message snapshot and continues from that context.
 
+## Long-Term Memory
+
+pi-claude-min includes a simple file-based long-term memory system inspired by durable agent memory patterns:
+
+- Memories are stored under `.pi-claude-min/memory/` in the target project.
+- `MEMORY.md` is an index of durable memories.
+- Each detailed memory is a separate Markdown file with frontmatter.
+- Before each task, pi-claude-min recalls relevant memories by matching the user query against memory names, descriptions, types, and content.
+- Recalled memories are injected into the prompt as context, but the agent is instructed to verify memory against the current repository before relying on it.
+
+Override the memory directory with:
+
+```bash
+PI_CLAUDE_MIN_MEMORY_DIR=/path/to/memory
+```
+
+Interactive memory commands:
+
+```text
+/memory
+/remember testing preference: always run smoke tests before summarizing
+/forget testing-preference
+```
+
 ## Interactive Commands
 
 When started without a prompt in a TTY, the agent opens a tiny REPL:
@@ -68,6 +92,9 @@ When started without a prompt in a TTY, the agent opens a tiny REPL:
 - `/help`: show commands.
 - `/model`: show active model.
 - `/workflow`: toggle workflow mode.
+- `/memory`: list long-term memories.
+- `/remember <name>: <text>`: save a long-term memory.
+- `/forget <id-or-name>`: delete a long-term memory.
 - `/session`: show session details.
 - `/tools`: show enabled tools.
 - `/clear`: clear conversation context.
@@ -137,6 +164,9 @@ Endpoints:
 - `POST /api/sessions/:id/messages`: enqueue one prompt.
 - `GET /api/sessions/:id/events`: stream session events with SSE.
 - `POST /api/sessions/:id/clear`: clear context.
+- `GET /api/sessions/:id/memory`: list long-term memories.
+- `POST /api/sessions/:id/memory/remember`: save a memory.
+- `POST /api/sessions/:id/memory/forget`: delete a memory.
 
 ## TypeScript API
 
@@ -185,6 +215,25 @@ const result = await engine.run("implement a small feature and verify it");
 console.log(result.status);
 ```
 
+Use memory from TypeScript:
+
+```ts
+import { MemoryStore, recallMemories } from "pi-claude-min";
+
+const memory = new MemoryStore(process.cwd());
+await memory.save({
+  name: "Testing preference",
+  type: "feedback",
+  content: "Run smoke tests before summarizing changes.",
+});
+
+const recalled = await recallMemories({
+  cwd: process.cwd(),
+  query: "what should I verify?",
+});
+console.log(recalled.recalled);
+```
+
 ## Current Scope
 
 Implemented:
@@ -203,9 +252,11 @@ Implemented:
 - Output parser for plans, patches, final answers, and parser errors.
 - Workflow engine for inspect/plan/execute/verify/summarize runs.
 - Step executor that collects streaming events and parsed results.
+- File-based long-term memory with explicit remember/forget/list APIs and prompt-time recall.
 
 Next useful milestones:
 
+- Add automatic background memory extraction from completed sessions.
 - Add `/compact` and `/cost` slash commands.
 - Add patch-style edits and diff previews.
 - Add MCP tool loading.

@@ -3,6 +3,7 @@ import http from "node:http";
 import path from "node:path";
 import { URL } from "node:url";
 import { createCodingAgentSession, type AgentEvent, type CodingAgentSession } from "./agent.js";
+import { MemoryStore } from "./memory/MemoryStore.js";
 import { createSessionStore, loadLatestSnapshot, sessionExists } from "./session.js";
 import type { CliOptions, ExecutionMode, PermissionMode } from "./types.js";
 import { WorkflowEngine } from "./workflow/WorkflowEngine.js";
@@ -10,6 +11,7 @@ import type { WorkflowEvent } from "./workflow/types.js";
 
 type ApiSession = {
   runner: CodingAgentSession;
+  cwd: string;
   events: Array<{ id: number; at: string; event: AgentEvent | ApiEvent | WorkflowEvent }>;
   clients: Set<http.ServerResponse>;
   busy: boolean;
@@ -128,6 +130,7 @@ async function createApiSession(body: Record<string, unknown>): Promise<ApiSessi
   const initialMessages = cli.resume ? await loadLatestSnapshot(cli.resume) : undefined;
   const apiSession: ApiSession = {
     runner: undefined as unknown as CodingAgentSession,
+    cwd: cli.cwd,
     events: [],
     clients: new Set(),
     busy: false,
@@ -195,6 +198,40 @@ async function handleClear(id: string, req: http.IncomingMessage, res: http.Serv
   json(res, 200, sessionResponse(apiSession));
 }
 
+async function handleMemory(id: string, req: http.IncomingMessage, res: http.ServerResponse, action?: string): Promise<void> {
+  const apiSession = sessions.get(id);
+  if (!apiSession) return notFound(res);
+  const store = new MemoryStore(apiSession.cwd);
+
+  if (!action && req.method === "GET") {
+    return json(res, 200, { memories: await store.list() });
+  }
+
+  if (action === "remember" && req.method === "POST") {
+    const body = await readJson(req);
+    const name = stringField(body, "name");
+    const content = stringField(body, "content");
+    if (!name || !content) return json(res, 400, { error: "name_and_content_required" });
+    const type = stringField(body, "type");
+    const saved = await store.save({
+      name,
+      content,
+      description: stringField(body, "description"),
+      type: type === "user" || type === "feedback" || type === "project" || type === "reference" ? type : "project",
+    });
+    return json(res, 201, { memory: saved });
+  }
+
+  if (action === "forget" && req.method === "POST") {
+    const body = await readJson(req);
+    const target = stringField(body, "id") ?? stringField(body, "name");
+    if (!target) return json(res, 400, { error: "id_or_name_required" });
+    return json(res, 200, { deleted: await store.forget(target) });
+  }
+
+  return methodNotAllowed(res);
+}
+
 function handleEvents(id: string, req: http.IncomingMessage, res: http.ServerResponse): void {
   if (req.method !== "GET") return methodNotAllowed(res);
   const apiSession = sessions.get(id);
@@ -241,6 +278,11 @@ async function route(req: http.IncomingMessage, res: http.ServerResponse): Promi
     if (action === "messages") return handlePostMessage(id, req, res);
     if (action === "events") return handleEvents(id, req, res);
     if (action === "clear") return handleClear(id, req, res);
+    if (action === "memory") return handleMemory(id, req, res);
+  }
+
+  if (parts.length === 5 && parts[0] === "api" && parts[1] === "sessions" && parts[3] === "memory") {
+    return handleMemory(parts[2]!, req, res, parts[4]);
   }
 
   return notFound(res);

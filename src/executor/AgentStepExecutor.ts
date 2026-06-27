@@ -39,7 +39,7 @@ export class AgentStepExecutor {
     });
 
     try {
-      const turn = await this.runner.prompt(builtPrompt.text);
+      const turn = await this.runner.prompt(builtPrompt.text, { buildPrompt: false });
       output = turn.output || output;
       return {
         taskId: task.id,

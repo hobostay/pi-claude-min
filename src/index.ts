@@ -2,6 +2,7 @@ export {
   createCodingAgentSession,
   runAgentPrompt,
   type AgentEvent,
+  type CodingAgentPromptOptions,
   type CodingAgentSession,
   type CodingAgentSessionInfo,
 } from "./agent.js";
@@ -12,6 +13,9 @@ export { OutputParser } from "./parser/OutputParser.js";
 export { TaskScheduler } from "./scheduler/TaskScheduler.js";
 export { AgentStepExecutor } from "./executor/AgentStepExecutor.js";
 export { WorkflowEngine } from "./workflow/WorkflowEngine.js";
+export { MemoryStore, getMemoryDir } from "./memory/MemoryStore.js";
+export { recallMemories, renderMemoryContext } from "./memory/MemoryRecall.js";
+export type { MemoryContext, MemoryDraft, MemoryRecord, MemoryType, RecalledMemory } from "./memory/types.js";
 export type {
   BuiltPrompt,
   ParsedOutput,

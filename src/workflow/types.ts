@@ -1,4 +1,5 @@
 import type { AgentEvent } from "../agent.js";
+import type { MemoryContext } from "../memory/types.js";
 
 export type WorkflowTaskKind = "inspect" | "plan" | "execute" | "verify" | "summarize" | "custom";
 
@@ -38,6 +39,7 @@ export type WorkflowContext = {
   tools: string[];
   history: WorkflowStepResult[];
   maxPromptChars: number;
+  memory?: MemoryContext;
 };
 
 export type PromptSection = {

@@ -1,5 +1,7 @@
 import { Agent, type AgentMessage } from "@earendil-works/pi-agent-core";
 import { getModels, getProviders, type KnownProvider } from "@earendil-works/pi-ai";
+import { recallMemories } from "./memory/MemoryRecall.js";
+import { PromptBuilder } from "./prompt/PromptBuilder.js";
 import { SYSTEM_PROMPT } from "./systemPrompt.js";
 import { approveToolCall } from "./permissions.js";
 import { createCodingTools } from "./tools.js";
@@ -54,7 +56,7 @@ export async function runAgentPrompt(options: {
 
 export type CodingAgentSession = {
   id: string;
-  prompt(prompt: string): Promise<CodingAgentTurnResult>;
+  prompt(prompt: string, options?: CodingAgentPromptOptions): Promise<CodingAgentTurnResult>;
   clear(): Promise<void>;
   describe(): string;
   info(): CodingAgentSessionInfo;
@@ -65,6 +67,10 @@ export type CodingAgentSession = {
 export type CodingAgentTurnResult = {
   output: string;
   events: AgentEvent[];
+};
+
+export type CodingAgentPromptOptions = {
+  buildPrompt?: boolean;
 };
 
 export type CodingAgentSessionInfo = {
@@ -176,9 +182,24 @@ export async function createCodingAgentSession(options: {
 
   return {
     id: options.session.id,
-    async prompt(prompt: string) {
+    async prompt(prompt: string, promptOptions: CodingAgentPromptOptions = {}) {
       activeTurn = { output: "", events: [] };
       const turn = activeTurn;
+      const shouldBuildPrompt = promptOptions.buildPrompt ?? true;
+      const finalPrompt = shouldBuildPrompt
+        ? new PromptBuilder().buildDirectPrompt(prompt, {
+            cwd: options.cli.cwd,
+            provider: options.cli.provider,
+            model: options.cli.model,
+            tools: tools.map(tool => tool.name),
+            history: [],
+            maxPromptChars: 24_000,
+            memory: await recallMemories({
+              cwd: options.cli.cwd,
+              query: prompt,
+            }),
+          }).text
+        : prompt;
       await options.session.append({
         type: "user",
         at: new Date().toISOString(),
@@ -186,7 +207,7 @@ export async function createCodingAgentSession(options: {
       });
 
       try {
-        await agent.prompt(prompt);
+        await agent.prompt(finalPrompt);
       } finally {
         activeTurn = undefined;
         if (shouldEcho && !options.cli.json) {

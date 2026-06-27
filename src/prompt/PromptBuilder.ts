@@ -1,4 +1,5 @@
 import type { BuiltPrompt, PromptSection, WorkflowContext, WorkflowTask } from "../workflow/types.js";
+import { renderMemoryContext } from "../memory/MemoryRecall.js";
 
 export type PromptBuilderOptions = {
   maxPromptChars?: number;
@@ -74,6 +75,12 @@ export class PromptBuilder {
         content: renderHistory(context),
       },
       {
+        title: "Long-Term Memory",
+        content: context.memory
+          ? renderMemoryContext(context.memory)
+          : "Long-term memory is unavailable for this step.",
+      },
+      {
         title: "Response Contract",
         content: [
           "Return useful prose for the user, but when this step creates a plan include one of these machine-readable forms:",
@@ -105,6 +112,12 @@ export class PromptBuilder {
             `model: ${context.provider}/${context.model}`,
             `available tools: ${context.tools.join(", ")}`,
           ].join("\n"),
+        },
+        {
+          title: "Long-Term Memory",
+          content: context.memory
+            ? renderMemoryContext(context.memory)
+            : "Long-term memory is unavailable for this task.",
         },
         {
           title: "Instructions",

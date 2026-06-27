@@ -5,6 +5,7 @@ import path from "node:path";
 import { getModels } from "@earendil-works/pi-ai";
 import { resolveInsideCwd } from "../dist/pathSafety.js";
 import { createCodingTools } from "../dist/tools.js";
+import { MemoryStore, recallMemories } from "../dist/index.js";
 
 const cwd = await mkdtemp(path.join(tmpdir(), "pi-claude-min-"));
 
@@ -39,6 +40,20 @@ try {
     newText: "world",
   });
   assert.match(await readFile(path.join(cwd, "README.md"), "utf8"), /world/);
+
+  const memory = new MemoryStore(cwd);
+  const saved = await memory.save({
+    name: "Testing Preference",
+    description: "Use real checks for this project",
+    type: "feedback",
+    content: "When changing this project, run the smoke tests before summarizing.",
+  });
+  assert.equal(saved.id, "testing-preference");
+  assert.equal((await memory.list()).length, 1);
+  const recalled = await recallMemories({ cwd, query: "should I run smoke tests?" });
+  assert.equal(recalled.recalled[0].id, "testing-preference");
+  assert.equal(await memory.forget("testing-preference"), true);
+  assert.equal((await memory.list()).length, 0);
 
   console.log("smoke ok");
 } finally {

@@ -1,5 +1,6 @@
 import type { CodingAgentSession } from "../agent.js";
 import { AgentStepExecutor } from "../executor/AgentStepExecutor.js";
+import { recallMemories } from "../memory/MemoryRecall.js";
 import { TaskScheduler } from "../scheduler/TaskScheduler.js";
 import type {
   WorkflowContext,
@@ -32,8 +33,12 @@ export class WorkflowEngine {
     await this.options.onEvent?.(event);
   }
 
-  private createContext(goal: string, results: WorkflowStepResult[]): WorkflowContext {
+  private async createContext(goal: string, task: WorkflowTask, results: WorkflowStepResult[]): Promise<WorkflowContext> {
     const info = this.runner.info();
+    const memory = await recallMemories({
+      cwd: info.cwd,
+      query: [goal, task.title, task.prompt, ...results.map(result => result.output)].join("\n"),
+    });
     return {
       goal,
       cwd: info.cwd,
@@ -42,6 +47,7 @@ export class WorkflowEngine {
       tools: info.tools,
       history: results,
       maxPromptChars: this.maxPromptChars,
+      memory,
     };
   }
 
@@ -68,7 +74,7 @@ export class WorkflowEngine {
       scheduler.markRunning(task);
       await this.emit({ type: "workflow_task_started", workflowId: scheduler.plan.id, task: { ...task } });
 
-      const result = await executor.execute(task, this.createContext(goal, results));
+      const result = await executor.execute(task, await this.createContext(goal, task, results));
       task.result = result;
       results.push(result);
 
