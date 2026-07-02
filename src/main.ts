@@ -40,6 +40,7 @@ Interactive commands:
   /remember <name>: <text> Save a long-term memory
   /forget <id-or-name>     Delete a long-term memory
   /agents                  List subagent tasks
+  /stop-agent <id>         Stop a queued or running subagent task
   /session                 Show session details
   /tools                   Show available tools
   /clear                   Clear in-memory conversation context
@@ -177,6 +178,7 @@ function printInteractiveHelp(): void {
   /remember  Save memory: /remember name: text
   /forget    Delete memory: /forget id-or-name
   /agents    List subagent tasks
+  /stop-agent Stop a queued or running subagent task
   /session   Show session details
   /tools     Show available tools
   /clear     Clear conversation context
@@ -242,6 +244,17 @@ async function runInteractive(cli: CliOptions, initialMessages?: unknown[]): Pro
         process.stdout.write("No subagent tasks yet.\n");
       } else {
         process.stdout.write(agents.map(agent => `${agent.id} [${agent.status}] ${agent.subagentType}: ${agent.description}`).join("\n") + "\n");
+      }
+      rl.prompt();
+      continue;
+    }
+    if (prompt.startsWith("/stop-agent ")) {
+      const id = prompt.slice("/stop-agent ".length).trim();
+      if (!id) {
+        process.stdout.write("Usage: /stop-agent agent_id\n");
+      } else {
+        const task = await runner.stopAgent({ id, reason: "Stopped from interactive CLI." });
+        process.stdout.write(`${task.id} [${task.status}] ${task.description}\n`);
       }
       rl.prompt();
       continue;

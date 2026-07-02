@@ -83,6 +83,9 @@ const fakeRunner = {
   async sendAgentMessage() {
     throw new Error("No fake subagents");
   },
+  async stopAgent() {
+    throw new Error("No fake subagents");
+  },
   onEvent(listener) {
     listeners.add(listener);
     return () => listeners.delete(listener);

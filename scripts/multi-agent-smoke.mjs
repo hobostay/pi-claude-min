@@ -55,5 +55,38 @@ assert.match(followed.result, /residual risk/);
 assert.equal(prompts.length, 3);
 assert.equal(events.includes("agent_task_created"), true);
 assert.equal(events.includes("agent_task_completed"), true);
+assert.equal(events.includes("agent_task_notification"), true);
+
+const slowManager = new AgentManager({
+  async createRunner() {
+    return {
+      async prompt(prompt) {
+        await new Promise(resolve => setTimeout(resolve, 30));
+        return {
+          output: `late result: ${prompt}`,
+          events: [],
+        };
+      },
+    };
+  },
+});
+
+const slowTask = await slowManager.spawn({
+  description: "slow background work",
+  prompt: "keep working",
+  runInBackground: true,
+});
+const stopped = await slowManager.stop({
+  id: slowTask.id,
+  reason: "No longer needed",
+});
+assert.equal(stopped.status, "killed");
+assert.match(stopped.notification, /task-notification/);
+await new Promise(resolve => setTimeout(resolve, 40));
+assert.equal(slowManager.getOrThrow(slowTask.id).status, "killed");
+await assert.rejects(
+  () => slowManager.sendMessage({ to: slowTask.id, message: "hello" }),
+  /was stopped/,
+);
 
 console.log("multi-agent smoke ok");

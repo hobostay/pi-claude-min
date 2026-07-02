@@ -26,6 +26,7 @@ export type {
   AgentTaskTurn,
   SendAgentMessageInput,
   SpawnAgentInput,
+  StopAgentInput,
 } from "./agents/types.js";
 export type {
   BuiltPrompt,

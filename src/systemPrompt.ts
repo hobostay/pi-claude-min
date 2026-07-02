@@ -17,6 +17,8 @@ Tool guidance:
 - Use bash for build, test, git, and project commands.
 - Use agent to delegate independent research, implementation, or verification work when a task benefits from parallel or role-focused help.
 - Use send_message to follow up with a background subagent by id.
+- Use agent_status to inspect running or completed subagent tasks.
+- Use stop_agent to stop a queued or running subagent task that is no longer useful.
 - Keep shell commands focused and avoid destructive actions unless explicitly requested.
 
 Long-term memory:

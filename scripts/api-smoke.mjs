@@ -62,7 +62,18 @@ try {
   assert.equal(created.response.status, 201);
   assert.equal(typeof created.json.id, "string");
   assert.equal(created.json.cwd, cwd);
-  assert.deepEqual(created.json.tools, ["read_file", "write_file", "edit_file", "bash", "grep", "list_files", "agent", "send_message"]);
+  assert.deepEqual(created.json.tools, [
+    "read_file",
+    "write_file",
+    "edit_file",
+    "bash",
+    "grep",
+    "list_files",
+    "agent",
+    "send_message",
+    "agent_status",
+    "stop_agent",
+  ]);
   assert.equal(created.json.agents, 0);
 
   const sessionId = created.json.id;

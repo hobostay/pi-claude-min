@@ -16,8 +16,19 @@ const SendMessageParams = Type.Object({
   wait_for_response: Type.Optional(Type.Boolean({ description: "Wait until the subagent answers before returning." })),
 });
 
+const AgentStatusParams = Type.Object({
+  id: Type.Optional(Type.String({ description: "Optional agent task id. Omit to list all subagent tasks." })),
+});
+
+const StopAgentParams = Type.Object({
+  id: Type.String({ description: "Agent task id to stop." }),
+  reason: Type.Optional(Type.String({ description: "Optional reason for stopping the task." })),
+});
+
 type AgentParams = Static<typeof AgentParams>;
 type SendMessageParams = Static<typeof SendMessageParams>;
+type AgentStatusParams = Static<typeof AgentStatusParams>;
+type StopAgentParams = Static<typeof StopAgentParams>;
 type ToolResult = AgentToolResult<Record<string, unknown>>;
 
 function defineTool<TParameters extends TSchema>(
@@ -28,6 +39,20 @@ function defineTool<TParameters extends TSchema>(
 
 function textResult(text: string, details?: Record<string, unknown>): ToolResult {
   return { content: [{ type: "text", text }], details: details ?? {} };
+}
+
+function formatTask(task: ReturnType<AgentManager["getOrThrow"]>): string {
+  return [
+    `agent_id: ${task.id}`,
+    `status: ${task.status}`,
+    `subagent_type: ${task.subagentType}`,
+    `background: ${task.background}`,
+    `description: ${task.description}`,
+    `turns: ${task.turns.length}`,
+    task.pendingMessages.length ? `pending_messages: ${task.pendingMessages.length}` : undefined,
+    task.result ? `latest_result:\n${task.result}` : undefined,
+    task.error ? `error: ${task.error}` : undefined,
+  ].filter(Boolean).join("\n");
 }
 
 export function createAgentTools(agentManager: AgentManager | undefined): AgentTool[] {
@@ -82,6 +107,37 @@ export function createAgentTools(agentManager: AgentManager | undefined): AgentT
           task.pendingMessages.length ? `pending_messages: ${task.pendingMessages.length}` : undefined,
         ].filter(Boolean).join("\n");
         return textResult(text, { task });
+      },
+    }),
+    defineTool({
+      name: "agent_status",
+      label: "Agent Status",
+      description: "Inspect subagent tasks, including running background work, queued messages, results, and errors.",
+      parameters: AgentStatusParams,
+      execute: async (_toolCallId: string, params: AgentStatusParams) => {
+        if (params.id) {
+          const task = agentManager.getOrThrow(params.id);
+          return textResult(formatTask(task), { task });
+        }
+        const tasks = agentManager.list();
+        const text = tasks.length === 0
+          ? "No subagent tasks."
+          : tasks.map(formatTask).join("\n\n---\n\n");
+        return textResult(text, { tasks });
+      },
+    }),
+    defineTool({
+      name: "stop_agent",
+      label: "Stop Agent",
+      description: "Stop a queued or running subagent task by id.",
+      parameters: StopAgentParams,
+      executionMode: "sequential",
+      execute: async (_toolCallId: string, params: StopAgentParams) => {
+        const task = await agentManager.stop({
+          id: params.id,
+          reason: params.reason,
+        });
+        return textResult(formatTask(task), { task });
       },
     }),
   ];

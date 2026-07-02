@@ -7,7 +7,7 @@ import { SYSTEM_PROMPT } from "./systemPrompt.js";
 import { approveToolCall } from "./permissions.js";
 import { createCodingTools } from "./tools.js";
 import { createSessionStore } from "./session.js";
-import type { AgentDefinition, AgentTask, AgentTaskEvent, SendAgentMessageInput } from "./agents/types.js";
+import type { AgentDefinition, AgentTask, AgentTaskEvent, SendAgentMessageInput, StopAgentInput } from "./agents/types.js";
 import type { CliOptions } from "./types.js";
 import type { SessionStore } from "./session.js";
 
@@ -65,6 +65,7 @@ export type CodingAgentSession = {
   info(): CodingAgentSessionInfo;
   agents(): AgentTask[];
   sendAgentMessage(input: SendAgentMessageInput): Promise<AgentTask>;
+  stopAgent(input: StopAgentInput): Promise<AgentTask>;
   onEvent?(listener: (event: AgentEvent) => void | Promise<void>): () => void;
   runWorkflow?(goal: string): Promise<unknown>;
 };
@@ -298,6 +299,12 @@ export async function createCodingAgentSession(options: {
         throw new Error("Subagents are disabled for this session.");
       }
       return agentManager.sendMessage(input);
+    },
+    async stopAgent(input) {
+      if (!agentManager) {
+        throw new Error("Subagents are disabled for this session.");
+      }
+      return agentManager.stop(input);
     },
     onEvent(listener) {
       eventListeners.add(listener);

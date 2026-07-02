@@ -247,6 +247,12 @@ async function handleAgents(
     return json(res, 200, { agents: apiSession.runner.agents() });
   }
 
+  if (agentId && !action && req.method === "GET") {
+    const task = apiSession.runner.agents().find(candidate => candidate.id === agentId);
+    if (!task) return notFound(res);
+    return json(res, 200, { task });
+  }
+
   if (agentId && action === "messages" && req.method === "POST") {
     const body = await readJson(req);
     const message = stringField(body, "message");
@@ -256,6 +262,15 @@ async function handleAgents(
       to: agentId,
       message,
       waitForResponse,
+    });
+    return json(res, 202, { task });
+  }
+
+  if (agentId && action === "stop" && req.method === "POST") {
+    const body = await readJson(req);
+    const task = await apiSession.runner.stopAgent({
+      id: agentId,
+      reason: stringField(body, "reason"),
     });
     return json(res, 202, { task });
   }
@@ -319,6 +334,10 @@ async function route(req: http.IncomingMessage, res: http.ServerResponse): Promi
 
   if (parts.length === 6 && parts[0] === "api" && parts[1] === "sessions" && parts[3] === "agents") {
     return handleAgents(parts[2]!, req, res, parts[4], parts[5]);
+  }
+
+  if (parts.length === 5 && parts[0] === "api" && parts[1] === "sessions" && parts[3] === "agents") {
+    return handleAgents(parts[2]!, req, res, parts[4]);
   }
 
   return notFound(res);
